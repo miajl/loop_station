@@ -303,7 +303,6 @@ class MainWindow(QMainWindow):
             return
         if event.key() in self.down_keys and event.text() in keymap:
             self.down_keys.remove(event.key())
-            print("key release " + str(event.text()))
 
             for i in range(self.n_tracks):
                 self.loopers[i].on_keystroke(keymap[event.text()], False)

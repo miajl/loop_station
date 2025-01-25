@@ -7,6 +7,8 @@ from synth_wrapper import SynthWrapper, ProgramSelector
 from clock import AudioSchedule
 
 class LooperState(Enum):
+    '''Enum which tracks the state of the looper, whether it is disabled,
+    recording or playing'''
     DISABLED = 1
     RECORD = 2
     PLAY = 3
@@ -20,127 +22,121 @@ class LooperState(Enum):
             return "PLAY"
         return "NOT MATCHING"
 
-
-# class Schedule(object):
-#     def __init__(self, index):
-#         self.n_commands = 0
-#         self.schedule = []
-
-#     def add_note(self, beat, pitch, on_off):
-
-sched_1 = [(0, 0, 1), (0.5, 0, 0), (1, 2, 1), (1.5, 2, 0), (2, 4, 1), (2.5, 4, 0), (3, 5, 1), (3.5, 5, 0)]
-sched_2 = [(0, 12, 1), (0.5, 12, 0), (1, 14, 1), (1.5, 14, 0), (2, 16, 1), (2.5, 16, 0), (3, 17, 1), (3.5, 17, 0)]
-sched_3 = [(2, 4, 1), (2.5, 4, 0)]
-sched_4 = [(3, 5, 1), (3.5, 5, 0)]
-scheds = [sched_1, sched_2, sched_3, sched_4]
+default_bpm = 60
+default_bpl = 16
 
 class LoopingTrack(object):
+    '''The back end of the looping track'''
     def __init__(self, index, synth, clock):
         super(LoopingTrack, self).__init__()
         self.index = index
         self.synth = synth
         self.clock = clock
-        self.bpm = 60
-        self.bpl = 16 #TODO fix
+        self.bpm = default_bpm
+        self.bpl = default_bpl
         self.mode = LooperState.DISABLED
-        # self.schedule = AudioSchedule(self.bpm, self.bpl, scheds[index]) # TODO fix
         self.schedule = AudioSchedule(self.bpm, self.bpl, [])
         self.quantize = False
         self.quantize_number = 12 # allows for triplets
-        self.new_state_loaded = False
+        self.new_state_loaded = False # tracks whether to update the clock
+        self.notes_changed = False # updates notes to check to repaint
 
     def change_state(self, new_state):
+        '''changes state to new_state'''
+        # if state hasn't changed
         if new_state == self.mode:
             return
         if new_state == LooperState.DISABLED:
             self.clock.disable_track(self.index)
-            print("disabled")
         elif new_state == LooperState.RECORD:
+            #clear schedule, reset and disable clock
             self.schedule.schedule_beats = []
             self.clock.reset_track_offset(self.index)
             self.clock.disable_track(self.index)
-            # self.clock.set
-            # self.recording = True
-            print("Record")
-        #play
+        # play state
         else:
-            print("play")
+            # post schedule to be played
             self.clock.post_schedule(self.index, self.schedule)
+            # start from beginning if previous state was disabled
             if self.mode == LooperState.DISABLED:
                 self.clock.enable_track(self.index, False)
-            # # keep offset when recording
+            # keep offset when last mode was recording
             else:
                 self.clock.enable_track(self.index, True)
         self.mode = new_state
 
     def set_quantize(self, quantize):
+        '''whether to quantize notes as we record them'''
         self.quantize = quantize
-        print("Quantize", self.quantize)
 
     def set_bpm(self, bpm):
+        '''update bpm and post new schedule'''
         self.bpm = bpm
         self.schedule.bpm = bpm
-        print("Set bpm of track " + str(self.index))
-        print(str(self.bpm))
         self.clock.post_schedule(self.index, self.schedule)
 
     def set_bpl(self, bpl):
+        '''update beats per loop and post new schedule'''
         self.bpl = bpl
         self.schedule.beats_per_loop = bpl
         self.clock.post_schedule(self.index, self.schedule)
-        print("Set bpl of track " + str(self.index))
-        print(str(self.bpl))
-        #TODO post schedule
 
     def set_schedule(self, schedule):
+        '''set schedule from loaded file, disable track'''
         self.change_state(LooperState.DISABLED)
         self.schedule = schedule
-        
 
     def set_volume(self, volume):
+        '''sets synth volume'''
         self.synth.set_volume(volume)
-        print(str(volume))
 
     def get_program_names(self):
+        '''gets current program name from synth'''
         return self.synth.program_selector.get_program_names()
     
     def set_program(self, index):
-        print(str(index))
+        '''sets synth to program at index'''
         self.synth.set_instrument(index)
     
     def set_midi_offset(self, offset):
+        '''sets the midi value of the r key'''
         self.synth.set_midi_offset(offset)
 
     def on_keystroke(self, note_idx, up_down):
+        '''plays and records note if in record mode'''
         if self.mode == LooperState.RECORD:
             beat = self.clock.get_current_beat(self.index, self.bpm)
             # quantize beat quantize number
             if self.quantize:
                 beat = np.round(beat * self.quantize_number) / self.quantize_number
+            # add note to schedule
             self.schedule.schedule_beats.append((beat, note_idx, up_down))
-            print(self.schedule.schedule_beats)
-        # if self.mode == LooperState.RECORD:
-        #     print("sent command " + str(note_idx) + " " + str(up_down))
+            # send command to synth
             self.synth.do_command(note_idx, up_down)
 
+
     def get_state(self):
+        '''export state to dict to be saved to file'''
         state_dic = {}
         state_dic["bpm"] = self.bpm
         state_dic["bpl"] = self.bpl
-        state_dic["schedule_beats"] = self.schedule.schedule_beats
+        state_dic["schedule_beats_beats"] = [beat for beat, _, _ in self.schedule.schedule_beats]
+        state_dic["schedule_beats_pitches"] = [pitch for _, pitch, _ in self.schedule.schedule_beats]
+        state_dic["schedule_beats_onoff"] = [onoff for _, _, onoff in self.schedule.schedule_beats]
         state_dic["program"] = self.synth.program
         state_dic["midi_offset"] = self.synth.midi_offset
         state_dic["volume"] = self.synth.volume
         return state_dic
         
     def load_from_state(self, state_dict):
+        '''import state from dict from save file'''
         self.change_state(LooperState.DISABLED)
         self.bpm = state_dict["bpm"]
         self.bpl = state_dict["bpl"]
         
         self.schedule.bpm = self.bpm
         self.schedule.beats_per_loop = self.bpl
-        self.schedule.schedule_beats = state_dict["schedule_beats"]
+        self.schedule.schedule_beats = [(beat, pitch, onoff) for beat, pitch, onoff in zip(state_dict["schedule_beats_beats"], state_dict["schedule_beats_pitches"], state_dict["schedule_beats_onoff"])]
 
         self.set_program(state_dict["program"])
         self.set_midi_offset(state_dict["midi_offset"])
@@ -148,156 +144,128 @@ class LoopingTrack(object):
 
         self.new_state_loaded = True
 
-class TimeSweep(QWidget):
+lowest_note = -5
+highest_note =  28
+
+class NoteVisualizer(QWidget):
+    '''Creates the visualization of the notes and the cursor of the current position'''
     def __init__(self, looper, color, **kwargs):
-        super(TimeSweep, self).__init__(**kwargs)
+        super(NoteVisualizer, self).__init__(**kwargs)
         palette = QPalette()
         palette.setColor(palette.Window, QColor("white"))
         self.setPalette(palette)
         self.setAutoFillBackground(True)
+        self.color = color
 
         self.width = self.frameGeometry().width()
         self.height = self.frameGeometry().height()
+
+        # line for sweeping 
         self.line = QLine(0, 0, 0, self.height)
 
         self.looper = looper
 
+        # whether to move the cursor
         self.started = False
+
+        self.notes = []
     
     def start_anim(self):
+        '''start the cursor sweep'''
         self.started = True
-        # self.animation.start()
 
     def stop_anim(self):
+        '''stop the cursor sweep'''
         self.started = False
+        # clear the note sweep and turn notes gray
         self.repaint()
 
+    def pitch_to_height(self, pitch):
+        '''convert note pitch to rectangle height'''
+        top_offset = (highest_note - pitch) / (highest_note + 1 - lowest_note)
+        return (top_offset * self.height, 1 / (highest_note + 1 - lowest_note) * self.height)
+    
+    def add_note(self, pitch, note_start, note_end):
+        '''add note with pitch, start and end'''
+        top, height = self.pitch_to_height(pitch)
+        note = QRect(note_start * self.width/self.looper.bpl,
+                      top,
+                     (note_end - note_start) * self.width / self.looper.bpl,
+                       height)
+        self.notes.append(note)
+
+    def clear_notes(self):
+        '''clear notes'''
+        self.notes = []
+
+    def plot_schedule(self):
+        '''plots current schedule of notes'''
+        # clear existing notes
+        self.clear_notes()
+        # separate notes by pitch
+        command_pairs = {}
+        for beat, pitch, on_off in self.looper.schedule.schedule_beats:
+            if pitch not in command_pairs.keys():
+                command_pairs[pitch] = []
+                # first is a note off (carry note over from end of loop)
+                if not on_off:
+                    command_pairs[pitch].append((0, 1))
+            command_pairs[pitch].append((beat, on_off))
+
+        # for each pitch make rectangle from note on and note off events
+        for pitch in command_pairs.keys():
+            on_note = -1 # to track the note on beat
+            looking_for = 1 # whether to find the next on (1) or off not (0)
+            for (beat, on_off) in command_pairs[pitch]:
+                # looking for note on and note is note on
+                if looking_for and on_off:
+                    on_note = beat
+                    looking_for = 0
+                # we already have the note on and the note is a note off
+                elif not looking_for and not on_off:
+                    self.add_note(pitch, on_note, beat)
+                    looking_for = 1
+
     def resizeEvent(self, event):
+        '''get new width and height on resize'''
         self.width = self.frameGeometry().width()
         self.height = self.frameGeometry().height()
         QWidget.resizeEvent(self, event)
         self.on_update()
 
     def paintEvent(self, event):
+        '''paints cursor and notes'''
+        if self.looper.mode == LooperState.RECORD:
+            self.plot_schedule()
         painter = QPainter(self)
-        if self.started:
-            painter.setPen(QPen(QColor('black'), 5))
+        # if cursor is moving, paint cursor and notes in color
+        if self.started:  
+            painter.setPen(QPen(self.color, 2))
+            painter.setBrush(self.color)
+            for note in self.notes:
+                painter.drawRect(note)
+            painter.setPen(QPen(QColor('black'), 2))
             painter.drawLine(self.line)
+        # otherwise paint notes in gray
         else:
             painter.eraseRect(0, 0, self.width, self.height)
+            painter.setPen(QPen(QColor('gray'), 2))
+            painter.setBrush(QColor('gray'))
+            for note in self.notes:
+                painter.drawRect(note)
     
     def on_update(self):
+        # paint new cursor position every time
         if self.started:
             current_beat = (self.looper.clock.get_current_beat(self.looper.index, self.looper.bpm)) % self.looper.bpl
-            # print(current_beat)
             x_pos = current_beat * self.width / self.looper.bpl
             self.line.setLine(x_pos, 0, x_pos, self.height)
             self.repaint()
-
-# class NoteRow(QWidget):
-#     def __init__(self, color, **kwargs):
-#         super(NoteRow, self).__init__(**kwargs)
-#         palette = QPalette()
-#         palette.setColor(palette.Window, QColor("white"))
-#         self.setPalette(palette)
-#         self.setAutoFillBackground(True)
-#         self.notes = []
-#         self.width = self.frameGeometry().width()
-#         self.height = self.frameGeometry().height()
-#         self.color = color
-#         # self.painter = QPainter(self)
-#         self.duration = -1
-#         self.notes_changed = 0
-
-#     def set_duration(self, duration):
-#         self.duration = duration
-    
-#     def plot_note(self, note_start, note_end):
-#         # left, top, width, height
-#         note = QRect(note_start * self.width / self.duration, 0, (note_end - note_start) * self.width / self.duration, self.height)
-#         self.notes.append((note_start, note_end, note))
-    
-#     def clear_all_notes(self):
-#         pass
-
-#     def plot_all_notes(self):
-#         pass
-
-#     def paintEvent(self, event):
-#         print("This note is trying to paint")
-#         painter = QPainter(self)
-#         painter.setPen(QPen(QColor(self.color), 5))
-#         if len(self.notes) > 0:
-#             for _, _, note in self.notes:
-#                 painter.drawRect(note)
-#         else:
-#             painter.eraseRect(0, 0, self.width, self.height)
-
-#     # def resizeEvent(self, event):
-#     #     self.clear_all_notes()
-#     #     self.plot_all_notes()
-#     #     self.width = self.frameGeometry().width()
-#     #     self.height = self.frameGeometry().height()
-#     #     QWidget.resizeEvent(self, event)
-#     #     self.on_update()
-
-#     def on_update(self):
-#         if self.notes_changed:
-#             print("we got here but aren't painting")
-#             self.repaint()
-#             self.notes_changed = 0
-
-lowest_note = -5
-highest_note =  28
-
-# class NoteVisualizer(QWidget):
-#     def __init__(self, color, **kwargs):
-#         super(NoteVisualizer, self).__init__(**kwargs)
-#         self.note_rows = {}
-#         vlayout = QVBoxLayout()
-
-#         for i in range(lowest_note, highest_note+1):
-#             tmp = NoteRow(color)
-#             self.note_rows[i] = tmp
-#             vlayout.addWidget(tmp)
-
-#         # self.setLayout(vlayout)
-
-#     def plot_schedule(self, schedule):
-#         command_pairs = {}
-#         for beat, pitch, on_off in schedule.schedule_beats:
-#             if pitch not in command_pairs.keys():
-#                 command_pairs[pitch] = []
-#                 # first is a note off (carry note over from end of loop)
-#                 if not on_off:
-#                     command_pairs[pitch].append((0, 1))
-#             command_pairs[pitch].append((beat, on_off))
-#         print(command_pairs)
-#         for pitch in command_pairs.keys():
-#             on_note = -1
-#             looking_for = 1 # whether to find the next on (1) or off not (0)
-#             self.note_rows[pitch].set_duration(schedule.beats_per_loop)
-#             for (beat, on_off) in command_pairs[pitch]:
-#                 if looking_for and on_off:
-#                     on_note = beat
-#                     looking_for = 0
-#                 elif not looking_for and not on_off:
-#                     print("plotting note at pitch " + str(pitch) + " start " + str(on_note) + " end " + str(beat))
-#                     self.note_rows[pitch].plot_note(on_note, beat)
-#                     looking_for = 1
-            
-#             self.note_rows[pitch].notes_changed = 1
-
-#     def on_update(self):
-#         for nr in self.note_rows.values():
-#             nr.on_update()
-                    
             
 
-default_bpm = 60
-default_bpl = 16
 
 class LooperGUI(QWidget):
+    '''Front end of the looper'''
     def __init__(self, index, n_loopers, loopers):
         super(LooperGUI, self).__init__()
 
@@ -336,26 +304,29 @@ class LooperGUI(QWidget):
 
         # BPM BPL Instrument
         bpm_bpl_sync_layout = QVBoxLayout()
+        # bpm spin box
         self.bpm_spin_box = QSpinBox(minimum=1, maximum=300, value=default_bpm)
         self.bpm_spin_box.editingFinished.connect(self.set_bpm)
         self.bpm_spin_box.setPrefix("Beats per Minute: ")
         bpm_bpl_sync_layout.addWidget(self.bpm_spin_box)
+        # bpl spin box
         self.bpl_spin_box = QSpinBox(minimum=1, maximum=64, value=default_bpl)
         self.bpl_spin_box.editingFinished.connect(self.set_bpl)
         self.bpl_spin_box.setPrefix("Beats per Loop: ")
         bpm_bpl_sync_layout.addWidget(self.bpl_spin_box)
+        # sync combobox
         sync_combobox = QComboBox()
         sync_combobox.addItem("No Sync")
+        # get list of all tracks we can sync to
         self.sync_tracks = []
         for i in range(n_loopers):
             if i != index:
                 sync_combobox.addItem("Sync to Track " + str(i + 1))
                 self.sync_tracks.append(i)
-
         bpm_bpl_sync_layout.addWidget(sync_combobox)
         sync_combobox.currentIndexChanged.connect(self.set_sync)
         hlayout.addLayout(bpm_bpl_sync_layout)
-
+        self.synced_to = -1
 
         # Volume
         slider_layout = QVBoxLayout()
@@ -367,75 +338,87 @@ class LooperGUI(QWidget):
 
         # Instrument, pitch offset, quantize
         i_po_q_layout = QVBoxLayout()
+        # instrument
         self.instrument_combobox = QComboBox()
         self.instrument_combobox.currentIndexChanged.connect(self.looper.set_program)
         for program_name in self.looper.get_program_names():
             self.instrument_combobox.addItem(program_name)
         i_po_q_layout.addWidget(self.instrument_combobox)
+        # pitch offset
         self.po_spin_box = QSpinBox(minimum=21, maximum=108, value=60)
         self.po_spin_box.editingFinished.connect(self.set_midi_offset)
         self.po_spin_box.setPrefix("R Key MIDI value: ")
         i_po_q_layout.addWidget(self.po_spin_box)
+        # quantize button
         self.quantize_button = QPushButton("Quantize Notes")
         self.quantize_button.setCheckable(True)
         self.quantize_button.clicked.connect(self.toggle_quantize)
         i_po_q_layout.addWidget(self.quantize_button)
         hlayout.addLayout(i_po_q_layout)
 
+        # splits the row in half between buttons and the note visualizer
         wrapper_layout = QHBoxLayout()
         wrapper_layout.addLayout(hlayout, stretch=1)
 
         # Note Visualizer
-        # self.note_visualizer = NoteVisualizer(QColor.fromHsvF(index / n_loopers, 1, 1))
-        self.sweep = TimeSweep(self.looper, QColor.fromHsvF(index / n_loopers, 1, 1))
-        vis_sweep_layout = QStackedLayout()
-        # vis_sweep_layout.addWidget(self.note_visualizer)
-        vis_sweep_layout.addWidget(self.sweep)
-        vis_sweep_layout.setStackingMode(QStackedLayout.StackAll)
+        self.note_visualizer = NoteVisualizer(self.looper, QColor.fromHsvF(index / n_loopers, 1, 1))
 
-        wrapper_layout.addLayout(vis_sweep_layout, stretch=1)
-
+        wrapper_layout.addWidget(self.note_visualizer, stretch=1)
 
         self.setLayout(wrapper_layout)
 
     def mode_change(self, state):
+        '''change mode to state'''
         if state:
             mode_id = self.mode_buttons.checkedId()
             mode = LooperState(mode_id)
             self.looper.change_state(mode)
-            if mode != LooperState.DISABLED:
-                self.sweep.start_anim()
-            else:
-                self.sweep.stop_anim()
-
-            # if mode != LooperState.RECORD:
-            #     self.note_visualizer.plot_schedule(self.looper.schedule)
+            if mode == LooperState.DISABLED:
+                self.note_visualizer.plot_schedule()
+                self.note_visualizer.stop_anim()
+            elif mode == LooperState.RECORD:
+                self.note_visualizer.clear_notes()
+                self.note_visualizer.start_anim()
+            else: #play
+                self.note_visualizer.start_anim()
+                self.note_visualizer.plot_schedule()
 
     def set_bpm(self):
+        '''set bpm, update looper and visualizer'''
         self.looper.set_bpm(self.bpm_spin_box.value())
-        self.sweep.bpm = self.bpm_spin_box.value()
+        self.note_visualizer.plot_schedule()
+        self.note_visualizer.bpm = self.bpm_spin_box.value()
+        self.note_visualizer.repaint()
 
     def set_bpl(self):
+        '''set beats per loop, update looper and visualizer'''
         self.looper.set_bpl(self.bpl_spin_box.value())
-        self.sweep.bpl = self.bpl_spin_box.value()
+        self.note_visualizer.plot_schedule()
+        self.note_visualizer.bpl = self.bpl_spin_box.value()
+        self.note_visualizer.repaint()
 
     def set_midi_offset(self):
+        '''set midi value of \'r\' key, update synth'''
         self.looper.set_midi_offset(self.po_spin_box.value())
 
     def toggle_quantize(self):
+        '''set whether to quantize recorded notes'''
         self.looper.set_quantize(self.quantize_button.isChecked())
 
     def set_sync(self, index):
+        '''sets whether to sync to another track'''
         if index != 0:
-            sync_track = self.sync_tracks[index - 1]
-            self.looper.set_bpm(self.loopers[sync_track].bpm)
-            self.bpm_spin_box.setValue(self.loopers[sync_track].bpm)
-            self.looper.set_bpl(self.loopers[sync_track].bpl)
-            self.bpl_spin_box.setValue(self.loopers[sync_track].bpl)
-            self.looper.clock.sync(self.index, sync_track)
+            self.synced_to = self.sync_tracks[index - 1]
+            self.looper.set_bpm(self.loopers[self.synced_to].bpm)
+            self.bpm_spin_box.setValue(self.loopers[self.synced_to].bpm)
+            self.looper.set_bpl(self.loopers[self.synced_to].bpl)
+            self.bpl_spin_box.setValue(self.loopers[self.synced_to].bpl)
+            self.looper.clock.sync(self.index, self.synced_to)
+            self.note_visualizer.plot_schedule()
 
     def on_update(self):
-        self.sweep.on_update()
+        '''update note visualizer, updates gui if the looper state has changed'''
+        self.note_visualizer.on_update()
         # self.note_visualizer.on_update()
         if self.looper.new_state_loaded:
             self.looper.new_state_loaded = False
@@ -447,6 +430,11 @@ class LooperGUI(QWidget):
             self.instrument_combobox.setCurrentIndex(self.looper.synth.program)
             self.po_spin_box.setValue(self.looper.synth.midi_offset)
             self.volume_slider.setValue(self.looper.synth.volume)
+
+            self.note_visualizer.plot_schedule()
+            self.note_visualizer.repaint()
+            
+            
 
 
 
