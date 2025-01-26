@@ -1,6 +1,0 @@
-Question:
-Does the clock run every tick or does it have an on-update function which checks the time elapsed during the on update
-
-Clock can have a spin function that does it, not sure how that works in kivy
-
-if we are using kivy we need a clock on update
