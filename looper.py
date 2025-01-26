@@ -41,9 +41,11 @@ class LoopingTrack(object):
         self.new_state_loaded = False # tracks whether to update the clock
         self.notes_changed = False # updates notes to check to repaint
         self.synced_to_me = [] # list of tracks synced to this track
+        self.is_synced = False
 
     def change_state(self, new_state):
         '''changes state to new_state'''
+        self.synth.turn_off_notes()
         # if state hasn't changed
         if new_state == self.mode:
             return
@@ -52,7 +54,8 @@ class LoopingTrack(object):
         elif new_state == LooperState.RECORD:
             #clear schedule, reset and disable clock
             self.schedule.schedule_beats = []
-            self.clock.reset_track_offset(self.index)
+            if not(self.is_synced):
+                self.clock.reset_track_offset(self.index)
             self.clock.disable_track(self.index)
         # play state
         else:
@@ -417,6 +420,7 @@ class LooperGUI(QWidget):
         self.looper.set_quantize(self.quantize_button.isChecked())
 
     def unsync(self):
+        self.looper.is_synced = False
         if self.synced_to_idx >= 0:
             self.synced_to.synced_to_me.remove(self.looper)
             self.synced_to_idx = -1
@@ -430,6 +434,7 @@ class LooperGUI(QWidget):
         
         # sync to new one
         if index != 0:
+            self.looper.is_synced = True
             self.synced_to_idx = self.sync_tracks[index - 1]
             self.synced_to = self.loopers[self.synced_to_idx]
             # add self to synced to tracks list
@@ -444,6 +449,7 @@ class LooperGUI(QWidget):
         # no sync
         else:
             self.synced_to_idx = -1
+            self.looper.is_synced = False
 
     def on_update(self):
         '''update note visualizer, updates gui if the looper state has changed'''

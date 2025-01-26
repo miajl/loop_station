@@ -21,13 +21,15 @@ class SynthWrapper(fluidsynth.Synth):
     def set_midi_offset(self, offset):
         '''sets synth midi offset, the pitch of the r key'''
         self.midi_offset = offset
-        print(self.midi_offset)
 
     def set_instrument(self, program):
         '''sets synth to instrument at index specified by program'''
         banknum, presetnum = self.program_selector.get_program_from_index(program)
         self.program_select(0, self.sfid, banknum, presetnum)
         self.program = program
+
+    def turn_off_notes(self):
+        self.all_notes_off(0)
 
     def do_command(self, pitch, off_on):
         '''instructs synth to turn on or off a note at pitch'''

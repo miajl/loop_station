@@ -177,7 +177,7 @@ class ControlPanel(QWidget):
                     be called on saving
        sync_function (function): a function with no arguments to be called 
                     on sync button press'''
-    def __init__(self, load_function, save_function, sync_function):
+    def __init__(self, load_function, save_function, sync_function, metronome_function):
         super(ControlPanel, self).__init__()
 
         #put buttons in horizontal layout
@@ -194,6 +194,10 @@ class ControlPanel(QWidget):
         self.sync_button.clicked.connect(sync_function)
         self.layout.addWidget(self.sync_button)
         self.setLayout(self.layout)
+
+        self.metronome_button = QPushButton("Use Metronome")
+        self.metronome_button.setCheckable(True)
+        self.metronome_button.clicked.connect(metronome_function)
 
         self.load_function = load_function
         self.save_function = save_function
@@ -324,7 +328,6 @@ class MainWindow(QMainWindow):
         out_dict = {} 
         for i in range(self.n_tracks):
             out_dict[i] = self.loopers[i].get_state()
-        print(out_dict)
         yaml.dump(out_dict, save_file)
         save_file.close()
 

@@ -15,6 +15,7 @@ class Clock(object):
         self.enabled = False
         self.track_is_active = {}
         self.track_offsets = {}
+        self.use_metronome = False
 
     def get_tick(self):
         '''gets current tick number'''
@@ -70,7 +71,7 @@ class Clock(object):
         if self.enabled:
             tick = self.get_tick()
             for looper_id in self.schedules.keys():
-                if self.track_is_active[looper_id]:
+                if looper_id in self.track_is_active.keys() and self.track_is_active[looper_id]:
                     # tick of loop
                     looper_tick = (tick - self.track_offsets[looper_id]) % \
                         self.schedules[looper_id].ticks_per_loop
