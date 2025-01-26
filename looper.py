@@ -40,6 +40,7 @@ class LoopingTrack(object):
         self.quantize_number = 12 # allows for triplets
         self.new_state_loaded = False # tracks whether to update the clock
         self.notes_changed = False # updates notes to check to repaint
+        self.synced_to_me = [] # list of tracks synced to this track
 
     def change_state(self, new_state):
         '''changes state to new_state'''
@@ -75,11 +76,18 @@ class LoopingTrack(object):
         self.schedule.bpm = bpm
         self.clock.post_schedule(self.index, self.schedule)
 
+        for looper in self.synced_to_me:
+            looper.set_bpm(bpm)
+            looper.new_state_loaded = True # update the gui
+
     def set_bpl(self, bpl):
         '''update beats per loop and post new schedule'''
         self.bpl = bpl
         self.schedule.beats_per_loop = bpl
         self.clock.post_schedule(self.index, self.schedule)
+        for looper in self.synced_to_me:
+            looper.set_bpl(bpl)
+            looper.new_state_loaded = True # update the gui
 
     def set_schedule(self, schedule):
         '''set schedule from loaded file, disable track'''
@@ -315,18 +323,19 @@ class LooperGUI(QWidget):
         self.bpl_spin_box.setPrefix("Beats per Loop: ")
         bpm_bpl_sync_layout.addWidget(self.bpl_spin_box)
         # sync combobox
-        sync_combobox = QComboBox()
-        sync_combobox.addItem("No Sync")
+        self.sync_combobox = QComboBox()
+        self.sync_combobox.addItem("No Sync")
         # get list of all tracks we can sync to
         self.sync_tracks = []
         for i in range(n_loopers):
             if i != index:
-                sync_combobox.addItem("Sync to Track " + str(i + 1))
+                self.sync_combobox.addItem("Sync to Track " + str(i + 1))
                 self.sync_tracks.append(i)
-        bpm_bpl_sync_layout.addWidget(sync_combobox)
-        sync_combobox.currentIndexChanged.connect(self.set_sync)
+        bpm_bpl_sync_layout.addWidget(self.sync_combobox)
+        self.sync_combobox.currentIndexChanged.connect(self.set_sync)
         hlayout.addLayout(bpm_bpl_sync_layout)
         self.synced_to = -1
+        self.synced_to_idx = -1
 
         # Volume
         slider_layout = QVBoxLayout()
@@ -389,6 +398,7 @@ class LooperGUI(QWidget):
         self.note_visualizer.plot_schedule()
         self.note_visualizer.bpm = self.bpm_spin_box.value()
         self.note_visualizer.repaint()
+        self.unsync()
 
     def set_bpl(self):
         '''set beats per loop, update looper and visualizer'''
@@ -396,6 +406,7 @@ class LooperGUI(QWidget):
         self.note_visualizer.plot_schedule()
         self.note_visualizer.bpl = self.bpl_spin_box.value()
         self.note_visualizer.repaint()
+        self.unsync()
 
     def set_midi_offset(self):
         '''set midi value of \'r\' key, update synth'''
@@ -405,16 +416,34 @@ class LooperGUI(QWidget):
         '''set whether to quantize recorded notes'''
         self.looper.set_quantize(self.quantize_button.isChecked())
 
+    def unsync(self):
+        if self.synced_to_idx >= 0:
+            self.synced_to.synced_to_me.remove(self.looper)
+            self.synced_to_idx = -1
+            self.sync_combobox.setCurrentIndex(0)
+
     def set_sync(self, index):
         '''sets whether to sync to another track'''
+        # unsync from previous sync track
+        if self.synced_to_idx >= 0 and self.synced_to != self.sync_tracks[index -1]:
+            self.synced_to.synced_to_me.remove(self.looper)
+        
+        # sync to new one
         if index != 0:
-            self.synced_to = self.sync_tracks[index - 1]
-            self.looper.set_bpm(self.loopers[self.synced_to].bpm)
-            self.bpm_spin_box.setValue(self.loopers[self.synced_to].bpm)
-            self.looper.set_bpl(self.loopers[self.synced_to].bpl)
-            self.bpl_spin_box.setValue(self.loopers[self.synced_to].bpl)
-            self.looper.clock.sync(self.index, self.synced_to)
+            self.synced_to_idx = self.sync_tracks[index - 1]
+            self.synced_to = self.loopers[self.synced_to_idx]
+            # add self to synced to tracks list
+            self.synced_to.synced_to_me.append(self.looper)
+            # update own bpm, beats per loop, update schedule
+            self.looper.set_bpm(self.synced_to.bpm)
+            self.bpm_spin_box.setValue(self.synced_to.bpm)
+            self.looper.set_bpl(self.synced_to.bpl)
+            self.bpl_spin_box.setValue(self.synced_to.bpl)
+            self.looper.clock.sync(self.index, self.synced_to_idx)
             self.note_visualizer.plot_schedule()
+        # no sync
+        else:
+            self.synced_to_idx = -1
 
     def on_update(self):
         '''update note visualizer, updates gui if the looper state has changed'''

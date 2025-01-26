@@ -61,7 +61,8 @@ class Clock(object):
 
     def sync(self, track_to_sync, reference):
         '''syncs track of track_to_sync to reference track'''
-        self.track_offsets[track_to_sync] = self.track_offsets[reference]
+        if reference in self.track_offsets.keys():
+            self.track_offsets[track_to_sync] = self.track_offsets[reference]
 
     def on_update(self):
         if self.enabled:
