@@ -44,19 +44,25 @@ class LoopingTrack(object):
         self.is_synced = False
 
     def change_state(self, new_state):
-        '''changes state to new_state'''
-        self.synth.turn_off_notes()
+        '''changes state to new_state'''     
         # if state hasn't changed
         if new_state == self.mode:
             return
+        
+        self.synth.turn_off_notes()
+        self.clock.release_metronome(self.index)
         if new_state == LooperState.DISABLED:
             self.clock.disable_track(self.index)
         elif new_state == LooperState.RECORD:
+            self.clock.start()
             #clear schedule, reset and disable clock
             self.schedule.schedule_beats = []
             if not(self.is_synced):
                 self.clock.reset_track_offset(self.index)
             self.clock.disable_track(self.index)
+
+            # set self to metronome
+            self.clock.set_metronome(self.index, self.bpm)
         # play state
         else:
             # post schedule to be played

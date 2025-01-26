@@ -1,4 +1,5 @@
 import time
+from synth_wrapper import SynthWrapper
 
 class Clock(object):
     '''Clock object keeps track of schedules from all the tracks and plays them when needed'''
@@ -16,6 +17,15 @@ class Clock(object):
         self.track_is_active = {}
         self.track_offsets = {}
         self.use_metronome = False
+        self.metro_track_idx = -1
+        self.metro_synth = SynthWrapper("./data/FluidR3_GM.sf2",
+                                             "./data/fluid_synth_programs.txt")
+        self.metro_synth.set_instrument(115) # wood block
+        self.metro_synth.set_volume(100)
+        self.metro_bpm = 60
+        self.prev_metro_beat = 0
+        self.metro_noteon = False
+        
 
     def get_tick(self):
         '''gets current tick number'''
@@ -23,8 +33,9 @@ class Clock(object):
         
     def start(self):
         '''start clock'''
-        self.offset = time.time()
-        self.enabled = True
+        if not self.enabled:
+            self.offset = time.time()
+            self.enabled = True
     
     def disable_track(self, looper_id):
         '''disable track with number looper_id'''
@@ -67,9 +78,21 @@ class Clock(object):
         if reference in self.track_offsets.keys():
             self.track_offsets[track_to_sync] = self.track_offsets[reference]
 
+    def set_metronome(self, index, bpm):
+        '''Sets metronome to follow track at index, with bpm'''
+        self.metro_track_idx = index
+        self.metro_bpm = bpm
+        self.prev_metro_beat = 0
+
+    def release_metronome(self, index):
+        '''release metronome at track index'''
+        if index == self.metro_track_idx:
+            self.metro_track_idx = -1
+
     def on_update(self):
         if self.enabled:
             tick = self.get_tick()
+            # look at all current schedules
             for looper_id in self.schedules.keys():
                 if looper_id in self.track_is_active.keys() and self.track_is_active[looper_id]:
                     # tick of loop
@@ -99,7 +122,20 @@ class Clock(object):
                     for note in note_ons:
                         self.synths[looper_id].do_command(note, 1)
                     # update previous tick
-                    self.prev_ticks[looper_id] = looper_tick                                                                
+                    self.prev_ticks[looper_id] = looper_tick 
+            # play metronome
+            if self.use_metronome and self.metro_track_idx >= 0:
+                metro_tick = (tick - self.track_offsets[self.metro_track_idx])
+                metro_beat = (metro_tick / self.tps / 60 * self.metro_bpm)
+                if metro_beat - self.prev_metro_beat >= 1:
+                    self.metro_synth.do_command(60, 1)
+                    self.prev_metro_beat = int(metro_beat)
+                    self.metro_noteon = True
+                # turn off metronome note 0.2 beats later
+                if metro_beat - self.prev_metro_beat >= 0.2 and self.metro_noteon:
+                    self.metro_synth.do_command(60, 0)
+                    self.metro_noteon = False
+
     
 class AudioSchedule(object):
     '''Class used to define the schedule'''

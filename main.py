@@ -193,14 +193,16 @@ class ControlPanel(QWidget):
         self.sync_button = QPushButton("Sync All Tracks")
         self.sync_button.clicked.connect(sync_function)
         self.layout.addWidget(self.sync_button)
-        self.setLayout(self.layout)
 
         self.metronome_button = QPushButton("Use Metronome")
         self.metronome_button.setCheckable(True)
-        self.metronome_button.clicked.connect(metronome_function)
+        self.metronome_button.clicked.connect(self.toggle_metronome)
+        self.layout.addWidget(self.metronome_button)
+        self.setLayout(self.layout)
 
         self.load_function = load_function
         self.save_function = save_function
+        self.metronome_function = metronome_function
 
     #TODO future work add tracks if there are more in the load file
     def load_file(self):
@@ -212,6 +214,10 @@ class ControlPanel(QWidget):
         if file_dialog.exec():
             selected_files = file_dialog.selectedFiles()
             self.load_function(selected_files[0])
+
+    def toggle_metronome(self):
+        '''set whether to quantize recorded notes'''
+        self.metronome_function(self.metronome_button.isChecked())
 
     def save_file(self):
         '''Opens a file dialog to pick a filename to save to and calls the 
@@ -263,7 +269,7 @@ class MainWindow(QMainWindow):
 
         # initialize control pane widget
         self.control_widget = ControlPanel(self.load_file, self.save_file,
-                                            self.sync_tracks)
+                                            self.sync_tracks, self.set_metronome)
         self.layout.addWidget(self.control_widget, stretch=0.5)
 
         # create the loopers and their GUIS
@@ -334,6 +340,9 @@ class MainWindow(QMainWindow):
     def sync_tracks(self):
         '''Resets offsets for each track so they all start playing together'''
         self.clock.sync_track_starts()
+
+    def set_metronome(self, on_off):
+        self.clock.use_metronome = on_off
 
     def on_update(self):
         '''Triggers on_update for clock and all looper guis'''
