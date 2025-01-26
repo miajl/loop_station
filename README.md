@@ -3,6 +3,7 @@ Mia Jane La Rocca \
 Computer Science Exercises
 
 ## Set Up Instructions ##
+The code was developed and tested on a laptop running Ubuntu 22.04.5 LTS. I have not tried it on other systems.
 
 1. Clone repository
 2. Download fluidysnth data from https://drive.google.com/file/d/1Axjm6w5kpsndNDWwNcLB6aCwnaQxX_rM/view?usp=sharing so that the file structure looks like this.
