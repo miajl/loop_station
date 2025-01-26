@@ -14,11 +14,13 @@ loop_station
 │   ├── FluidR3_GM.sf2
 │   └── fluid_synth_programs.txt
 ├── documentation
+│   ├── block_diagram.drawio
+│   ├── block_diagram.png
 │   ├── final_gui.png
 │   ├── gui_mockup.png
 │   ├── looper_mockup.png
+│   ├── mlarocca_final_report.pdf
 │   ├── mlarocca_progress_report.pdf
-|   ├── mlarocca_final_report.pdf
 │   └── progress_report_gui.png
 ├── first_track.txt
 ├── looper.py
