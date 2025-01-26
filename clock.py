@@ -42,6 +42,8 @@ class Clock(object):
 
     def post_schedule(self, looper_id, schedule):
         '''called by loopers to post their new schedules'''
+        # sort schedule by command beats
+        schedule.sort()
         self.schedules[looper_id] = schedule
         self.schedules[looper_id].get_schedule_ticks(self.tps)
 
@@ -55,9 +57,9 @@ class Clock(object):
         for looper_id in self.track_offsets.keys():
             self.track_offsets[looper_id] = new_start_tick
 
-    def get_current_beat(self, looper_id, bpm):
+    def get_current_beat(self, looper_id, bpm, bpl):
         '''get the current beat of track looper id'''
-        return (self.get_tick() - self.track_offsets[looper_id]) / self.tps / 60 * bpm
+        return ((self.get_tick() - self.track_offsets[looper_id]) / self.tps / 60 * bpm) % bpl
 
     def sync(self, track_to_sync, reference):
         '''syncs track of track_to_sync to reference track'''
@@ -79,11 +81,22 @@ class Clock(object):
                             if not self.schedules[looper_id].schedule_ticks[i][2]:
                                 self.synths[looper_id].do_command(self.schedules[looper_id].schedule_ticks[i][1], self.schedules[looper_id].schedule_ticks[i][2])
                         self.counters[looper_id] = 0
-                    # loop through all notes until the note tick is greater than current tick
+                    # loop through all notes until the note tick is greater than current tick, only play noteons if we do not get the noteoff
+                    note_ons = []
                     while( self.counters[looper_id] < len(self.schedules[looper_id].schedule_ticks) and self.schedules[looper_id].schedule_ticks[self.counters[looper_id]][0] <= looper_tick):
-
-                        self.synths[looper_id].do_command(self.schedules[looper_id].schedule_ticks[self.counters[looper_id]][1], self.schedules[looper_id].schedule_ticks[self.counters[looper_id]][2])
+                        current_note = self.schedules[looper_id].schedule_ticks[self.counters[looper_id]]
+                        # keep track of all noteons to be played
+                        if current_note[2]:
+                            note_ons.append(self.schedules[looper_id].schedule_ticks[self.counters[looper_id]][1])
+                        else:
+                            self.synths[looper_id].do_command(current_note[1], current_note[2])
+                            if current_note[1] in note_ons:
+                                note_ons.remove(current_note[1])
                         self.counters[looper_id] += 1
+                    
+                    # do all note ons
+                    for note in note_ons:
+                        self.synths[looper_id].do_command(note, 1)
                     # update previous tick
                     self.prev_ticks[looper_id] = looper_tick                                                                
     
@@ -93,7 +106,7 @@ class AudioSchedule(object):
         super(AudioSchedule, self).__init__()
         self.bpm = bpm
         self.beats_per_loop = beats_per_loop
-        self.schedule_beats = schedule # List of tuple beat, pitch
+        self.schedule_beats = schedule # List of tuple beat, pitch, off
         self.schedule_ticks = []
         self.ticks_per_loop = -1
 
@@ -105,5 +118,7 @@ class AudioSchedule(object):
 
         self.ticks_per_loop = self.beats_per_loop / self.bpm * 60 * tps
 
-    # def __repr__(self):
-    #     return "%s (bpm=%r, bpl=%r, schedule_beats=%r, schedule_ticks=%r, ticks_per_loop=%r)" % (self.__class__.__name__, self.bpm, self.beats_per_loop, self.schedule_beats, self.schedule_ticks, self.ticks_per_loop)
+    def sort(self):
+        tmp = sorted(self.schedule_beats, key=lambda x: x[0])
+        self.schedule_beats = tmp
+        

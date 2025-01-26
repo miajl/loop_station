@@ -113,7 +113,7 @@ class LoopingTrack(object):
     def on_keystroke(self, note_idx, up_down):
         '''plays and records note if in record mode'''
         if self.mode == LooperState.RECORD:
-            beat = self.clock.get_current_beat(self.index, self.bpm)
+            beat = self.clock.get_current_beat(self.index, self.bpm, self.bpl)
             # quantize beat quantize number
             if self.quantize:
                 beat = np.round(beat * self.quantize_number) / self.quantize_number
@@ -265,7 +265,7 @@ class NoteVisualizer(QWidget):
     def on_update(self):
         # paint new cursor position every time
         if self.started:
-            current_beat = (self.looper.clock.get_current_beat(self.looper.index, self.looper.bpm)) % self.looper.bpl
+            current_beat = (self.looper.clock.get_current_beat(self.looper.index, self.looper.bpm, self.looper.bpl))
             x_pos = current_beat * self.width / self.looper.bpl
             self.line.setLine(x_pos, 0, x_pos, self.height)
             self.repaint()
